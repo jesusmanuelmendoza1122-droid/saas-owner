@@ -14,5 +14,6 @@ Este sitio se publica en Netlify y usa Supabase como fuente central de verdad.
 
 Netlify genera `config.js` durante cada publicación con las dos variables
 públicas; no edites ese archivo a mano. La función `netlify/functions/provision-company.mjs` crea empresas y sus
-administradores desde tu panel. Las empresas solo pueden crear agentes y
-consultores mediante las políticas de Supabase.
+coordinadores desde tu panel. Los coordinadores solo pueden crear operadores
+de su propia empresa. Antes de usar esta versión ejecuta
+`supabase/migrations/002-operator-model.sql` una vez en Supabase.
