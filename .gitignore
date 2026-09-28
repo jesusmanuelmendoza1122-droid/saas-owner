@@ -1,0 +1,8 @@
+# Secrets and local state
+.env
+.env.*
+!.env.example
+owner-control.db
+owner-control.db-*
+node_modules/
+.netlify/
