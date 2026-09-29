@@ -6,3 +6,4 @@ owner-control.db
 owner-control.db-*
 node_modules/
 .netlify/
+*firebase-adminsdk*.json
