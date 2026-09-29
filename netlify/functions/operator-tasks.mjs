@@ -14,8 +14,10 @@ export default async request => {
       return Response.json(data, { headers });
     }
     if (request.method === 'PATCH') {
-      const body = await request.json(); const status = body.status === 'resuelto' ? 'cerrado' : body.status;
-      if (!['abierto', 'en_progreso', 'cerrado'].includes(status)) return Response.json({ error: 'Estado inválido.' }, { status: 400, headers });
+      const body = await request.json();
+      // La APK nunca cierra definitivamente: solicita confirmación humana.
+      const status = body.status === 'cerrado' || body.status === 'resuelto' ? 'pendiente_confirmacion' : body.status;
+      if (!['abierto', 'en_progreso', 'pendiente_confirmacion'].includes(status)) return Response.json({ error: 'Estado inválido.' }, { status: 400, headers });
       const { error } = await admin.from('cloud_tickets').update({ status, updated_at: new Date().toISOString() }).eq('id', body.id).eq('assigned_operator_id', profile.id);
       if (error) throw error;
       return Response.json({ ok: true, status }, { headers });

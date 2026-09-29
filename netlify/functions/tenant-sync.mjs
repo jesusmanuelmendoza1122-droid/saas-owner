@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 const hash = value => createHash('sha256').update(value).digest('hex');
-const operatorStates = new Set(['en_progreso', 'resuelto', 'cerrado']);
+const operatorStates = new Set(['en_progreso', 'pendiente_confirmacion']);
 export default async request => {
   if (request.method !== 'POST') return Response.json({ error: 'Método no permitido.' }, { status: 405 });
   try {
@@ -15,7 +15,9 @@ export default async request => {
       const { data: existing } = await admin.from('cloud_tickets').select('status').eq('device_id', device.id).eq('source_ticket_id', sourceTicketId).maybeSingle();
       const localStatus = ticket.status || 'abierto';
       const status = existing && operatorStates.has(existing.status) && existing.status !== localStatus ? existing.status : localStatus;
-      const { error } = await admin.from('cloud_tickets').upsert({ company_id: device.company_id, device_id: device.id, source_ticket_id: sourceTicketId, assigned_operator_id: ticket.assigned_to || null, subject: ticket.subject || '', description: ticket.description || '', category: ticket.category_name || '', priority: ticket.priority || 'media', status, updated_at: new Date().toISOString() }, { onConflict: 'device_id,source_ticket_id' });
+      const location = `Oficina: ${ticket.office || 'Sin especificar'} · Piso: ${ticket.floor || 'Sin especificar'} · Tiempo estimado: ${ticket.estimated_minutes || 60} min`;
+      const description = `${ticket.description || 'Sin descripción.'}\n\n${location}`;
+      const { error } = await admin.from('cloud_tickets').upsert({ company_id: device.company_id, device_id: device.id, source_ticket_id: sourceTicketId, assigned_operator_id: ticket.assigned_to || null, subject: ticket.subject || '', description, category: ticket.category_name || '', priority: ticket.priority || 'media', status, updated_at: new Date().toISOString() }, { onConflict: 'device_id,source_ticket_id' });
       if (error) throw error;
       if (status !== localStatus) updates.push({ sourceTicketId, status });
     }
