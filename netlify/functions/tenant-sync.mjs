@@ -1,3 +1,24 @@
-import { createClient } from '@supabase/supabase-js';import { createHash } from 'node:crypto';
-const hash=x=>createHash('sha256').update(x).digest('hex');
-export default async request=>{if(request.method!=='POST')return new Response(JSON.stringify({error:'Método no permitido.'}),{status:405});try{const key=request.headers.get('x-tenant-device-key')||'';const admin=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY);const {data:device}=await admin.from('tenant_devices').select('id,company_id,active').eq('key_hash',hash(key)).maybeSingle();if(!device?.active)return new Response(JSON.stringify({error:'Dispositivo no activado.'}),{status:403});const body=await request.json();const rows=Array.isArray(body.tickets)?body.tickets:[];for(const t of rows){await admin.from('cloud_tickets').upsert({company_id:device.company_id,device_id:device.id,source_ticket_id:String(t.id),assigned_operator_id:t.assigned_to||null,subject:t.subject||'',description:t.description||'',category:t.category_name||'',priority:t.priority||'media',status:t.status||'abierto',updated_at:new Date().toISOString()},{onConflict:'device_id,source_ticket_id'});}return Response.json({ok:true,synced:rows.length});}catch(error){return new Response(JSON.stringify({error:error.message||'Error'}),{status:400});}};
+import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
+const hash = value => createHash('sha256').update(value).digest('hex');
+const operatorStates = new Set(['en_progreso', 'resuelto', 'cerrado']);
+export default async request => {
+  if (request.method !== 'POST') return Response.json({ error: 'Método no permitido.' }, { status: 405 });
+  try {
+    const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const key = request.headers.get('x-tenant-device-key') || '';
+    const { data: device } = await admin.from('tenant_devices').select('id,company_id,active').eq('key_hash', hash(key)).maybeSingle();
+    if (!device?.active) return Response.json({ error: 'Dispositivo no activado.' }, { status: 403 });
+    const body = await request.json(); const tickets = Array.isArray(body.tickets) ? body.tickets : []; const updates = [];
+    for (const ticket of tickets) {
+      const sourceTicketId = String(ticket.id);
+      const { data: existing } = await admin.from('cloud_tickets').select('status').eq('device_id', device.id).eq('source_ticket_id', sourceTicketId).maybeSingle();
+      const localStatus = ticket.status || 'abierto';
+      const status = existing && operatorStates.has(existing.status) && existing.status !== localStatus ? existing.status : localStatus;
+      const { error } = await admin.from('cloud_tickets').upsert({ company_id: device.company_id, device_id: device.id, source_ticket_id: sourceTicketId, assigned_operator_id: ticket.assigned_to || null, subject: ticket.subject || '', description: ticket.description || '', category: ticket.category_name || '', priority: ticket.priority || 'media', status, updated_at: new Date().toISOString() }, { onConflict: 'device_id,source_ticket_id' });
+      if (error) throw error;
+      if (status !== localStatus) updates.push({ sourceTicketId, status });
+    }
+    return Response.json({ ok: true, synced: tickets.length, updates });
+  } catch (error) { return Response.json({ error: error.message || 'Error' }, { status: 400 }); }
+};
