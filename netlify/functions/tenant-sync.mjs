@@ -13,9 +13,10 @@ export default async request => {
     const body = await request.json(); const tickets = Array.isArray(body.tickets) ? body.tickets : []; const updates = [];
     for (const ticket of tickets) {
       const sourceTicketId = String(ticket.id);
-      const { data: existing } = await admin.from('cloud_tickets').select('status,assigned_operator_id').eq('device_id', device.id).eq('source_ticket_id', sourceTicketId).maybeSingle();
+      const { data: existing } = await admin.from('cloud_tickets').select('status,assigned_operator_id,updated_at').eq('device_id', device.id).eq('source_ticket_id', sourceTicketId).maybeSingle();
       const localStatus = ticket.status || 'abierto';
-      const preserveOperatorState = existing && operatorStates.has(existing.status) && existing.status !== localStatus && !ticket.confirmation_response;
+      const cloudIsNewer = existing && new Date(existing.updated_at).getTime() > new Date(ticket.updated_at).getTime();
+      const preserveOperatorState = existing && operatorStates.has(existing.status) && existing.status !== localStatus && (!ticket.confirmation_response || cloudIsNewer);
       const status = preserveOperatorState ? existing.status : localStatus;
       const location = `Oficina: ${ticket.office || 'Sin especificar'} · Piso: ${ticket.floor || 'Sin especificar'} · Tiempo estimado: ${ticket.estimated_minutes || 60} min`;
       const description = `${ticket.description || 'Sin descripción.'}\n\n${location}`;
