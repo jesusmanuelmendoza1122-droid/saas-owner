@@ -18,7 +18,9 @@ export default async request => {
       const cloudIsNewer = existing && new Date(existing.updated_at).getTime() > new Date(ticket.updated_at).getTime();
       // La confirmación humana es definitiva: jamás se reemplaza por un estado pendiente almacenado en nube.
       const customerAnswered = ['confirmado', 'rechazado'].includes(ticket.confirmation_response);
-      const preserveOperatorState = existing && operatorStates.has(existing.status) && existing.status !== localStatus && !customerAnswered && cloudIsNewer;
+      // Tras un NO, un operador puede solicitar una nueva confirmación. Solo se acepta si esa acción en nube es posterior a la respuesta del cliente.
+      const reRequestAfterRejection = existing?.status === 'pendiente_confirmacion' && ticket.confirmation_response === 'rechazado' && cloudIsNewer;
+      const preserveOperatorState = existing && operatorStates.has(existing.status) && existing.status !== localStatus && (!customerAnswered || reRequestAfterRejection) && cloudIsNewer;
       const status = preserveOperatorState ? existing.status : localStatus;
       const location = `Oficina: ${ticket.office || 'Sin especificar'} · Piso: ${ticket.floor || 'Sin especificar'} · Tiempo estimado: ${ticket.estimated_minutes || 60} min`;
       const description = `${ticket.description || 'Sin descripción.'}\n\n${location}`;
