@@ -4,7 +4,7 @@ create table if not exists public.portal_requests (
  public_code text unique not null default ('SOL-' || to_char(now(),'YYYY') || '-' || upper(substr(encode(gen_random_bytes(5),'hex'),1,8))),
  requester_name text not null, requester_email text not null, requester_whatsapp text not null,
  request_type text not null, location text default '', subject text not null, description text not null,
- status text not null default 'recibida' check(status in ('recibida','clasificada','asignada','en_progreso','resuelta','cerrada')),
+ status text not null default 'abierto' check(status in ('abierto','asignada','en_progreso','pendiente_confirmacion','cerrado')),`r`n assigned_operator_id uuid references public.profiles(id) on delete set null,
  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 alter table public.portal_requests enable row level security;
