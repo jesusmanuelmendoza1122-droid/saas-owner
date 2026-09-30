@@ -14,6 +14,13 @@ export default async request => {
     for (const ticket of tickets) {
       const sourceTicketId = String(ticket.id);
       const { data: existing } = await admin.from('cloud_tickets').select('status,assigned_operator_id,updated_at').eq('device_id', device.id).eq('source_ticket_id', sourceTicketId).maybeSingle();
+      // La aplicación de escritorio conserva un ID local; para móvil se traduce
+      // por correo al UUID del operador dentro de la misma empresa.
+      let assignedOperatorId = ticket.assigned_to || null;
+      if (ticket.assigned_operator_email) {
+        const { data: profile } = await admin.from('profiles').select('id').eq('company_id', device.company_id).eq('email', ticket.assigned_operator_email).eq('role', 'operator').eq('active', true).maybeSingle();
+        if (profile?.id) assignedOperatorId = profile.id;
+      }
       const localStatus = ticket.status || 'abierto';
       const cloudIsNewer = existing && new Date(existing.updated_at).getTime() > new Date(ticket.updated_at).getTime();
       // La confirmación humana es definitiva: jamás se reemplaza por un estado pendiente almacenado en nube.
@@ -24,9 +31,9 @@ export default async request => {
       const status = preserveOperatorState ? existing.status : localStatus;
       const location = `Oficina: ${ticket.office || 'Sin especificar'} · Piso: ${ticket.floor || 'Sin especificar'} · Tiempo estimado: ${ticket.estimated_minutes || 60} min`;
       const description = `${ticket.description || 'Sin descripción.'}\n\n${location}`;
-      const { error } = await admin.from('cloud_tickets').upsert({ company_id: device.company_id, device_id: device.id, source_ticket_id: sourceTicketId, assigned_operator_id: ticket.assigned_to || null, subject: ticket.subject || '', description, category: ticket.category_name || '', priority: ticket.priority || 'media', status, updated_at: new Date().toISOString() }, { onConflict: 'device_id,source_ticket_id' });
+      const { error } = await admin.from('cloud_tickets').upsert({ company_id: device.company_id, device_id: device.id, source_ticket_id: sourceTicketId, assigned_operator_id: assignedOperatorId, subject: ticket.subject || '', description, category: ticket.category_name || '', priority: ticket.priority || 'media', status, updated_at: new Date().toISOString() }, { onConflict: 'device_id,source_ticket_id' });
       if (error) throw error;
-      if ((!existing || existing.assigned_operator_id !== ticket.assigned_to) && ticket.assigned_to) notifyOperator(admin, ticket.assigned_to, ticket).catch(error => console.error('Push:', error.message));
+      if ((!existing || existing.assigned_operator_id !== assignedOperatorId) && assignedOperatorId) notifyOperator(admin, assignedOperatorId, ticket).catch(error => console.error('Push:', error.message));
       if (status !== localStatus) updates.push({ sourceTicketId, status });
     }
     return Response.json({ ok: true, synced: tickets.length, updates });
