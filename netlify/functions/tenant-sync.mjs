@@ -16,10 +16,19 @@ export default async request => {
       const { data: existing } = await admin.from('cloud_tickets').select('status,assigned_operator_id,updated_at').eq('device_id', device.id).eq('source_ticket_id', sourceTicketId).maybeSingle();
       // La aplicación de escritorio conserva un ID local; para móvil se traduce
       // por correo al UUID del operador dentro de la misma empresa.
-      let assignedOperatorId = ticket.assigned_to || null;
-      if (ticket.assigned_operator_email) {
-        const { data: profile } = await admin.from('profiles').select('id').eq('company_id', device.company_id).eq('email', ticket.assigned_operator_email).eq('role', 'operator').eq('active', true).maybeSingle();
-        if (profile?.id) assignedOperatorId = profile.id;
+      // El cliente solo transmite un correo. Supabase resuelve su UUID de
+      // manera interna; jamás se usa el correo como assigned_operator_id.
+      let assignedOperatorId = null;
+      const operatorEmail = String(ticket.assigned_operator_email || ticket.assigned_to || '').trim().toLowerCase();
+      if (operatorEmail) {
+        const { data: authUsers, error: authUsersError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        if (authUsersError) throw authUsersError;
+        const authUser = (authUsers?.users || []).find(user => String(user.email || '').toLowerCase() === operatorEmail);
+        if (authUser) {
+          const { data: profile, error: profileError } = await admin.from('profiles').select('id,company_id,role,active').eq('id', authUser.id).maybeSingle();
+          if (profileError) throw profileError;
+          if (profile?.company_id === device.company_id && profile.role === 'operator' && profile.active) assignedOperatorId = profile.id;
+        }
       }
       const localStatus = ticket.status || 'abierto';
       const cloudIsNewer = existing && new Date(existing.updated_at).getTime() > new Date(ticket.updated_at).getTime();
