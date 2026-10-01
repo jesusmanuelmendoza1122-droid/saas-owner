@@ -8,9 +8,31 @@ export default async request => {
     const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
     const { data: { user } } = await admin.auth.getUser(token);
     if (!user) return Response.json({ error: 'Sesión no válida.' }, { status: 401, headers });
-    const { data: profile, error: profileError } = await admin.from('profiles').select('id,company_id,full_name,role,active').eq('id', user.id).maybeSingle();
+    let { data: profile, error: profileError } = await admin.from('profiles').select('id,company_id,full_name,role,active').eq('id', user.id).maybeSingle();
     if (profileError) throw profileError;
-    if (!profile?.active || !['company_admin', 'super_admin'].includes(profile.role)) return Response.json({ error: 'Esta cuenta no administra una mesa de ayuda.' }, { status: 403, headers });
+    // Recuperación controlada de instalaciones antiguas: antes de existir el
+    // perfil central, algunas empresas ya tenían su coordinador guardado como
+    // correo de contacto. Solo el usuario que inició sesión con ese mismo
+    // correo puede convertir esa relación en un perfil de company_admin.
+    if (!profile?.active || !['company_admin', 'super_admin'].includes(profile.role)) {
+      const { data: legacyCompany, error: legacyCompanyError } = await admin
+        .from('companies')
+        .select('*')
+        .eq('contact_email', user.email || '')
+        .maybeSingle();
+      if (legacyCompanyError) throw legacyCompanyError;
+      if (!legacyCompany) return Response.json({ error: 'Esta cuenta no administra una mesa de ayuda.' }, { status: 403, headers });
+      const recovered = {
+        id: user.id,
+        company_id: legacyCompany.id,
+        full_name: user.user_metadata?.full_name || legacyCompany.contact_name || 'Coordinador',
+        role: 'company_admin',
+        active: true,
+      };
+      const { error: recoverError } = await admin.from('profiles').upsert(recovered, { onConflict: 'id' });
+      if (recoverError) throw recoverError;
+      profile = recovered;
+    }
     const { data: company, error: companyError } = await admin.from('companies').select('*').eq('id', profile.company_id).maybeSingle();
     if (companyError) throw companyError;
     const { data: profiles, error: operatorsError } = await admin.from('profiles').select('id,full_name,role,active').eq('company_id', profile.company_id).eq('role', 'operator').eq('active', true);
