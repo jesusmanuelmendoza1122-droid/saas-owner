@@ -7,7 +7,7 @@ export default async request=>{try{
   const {data:owner}=user?await admin.from('super_admins').select('user_id').eq('user_id',user.id).maybeSingle():{data:null};
   if(!owner)return Response.json({error:'Solo Super Admin.'},{status:403,headers});
   const [{data:devices,error:de},{data:profiles,error:pe},{data:push,error:xe}]=await Promise.all([
-    admin.from('tenant_devices').select('company_id,active,updated_at'),
+    admin.from('tenant_devices').select('company_id,active'),
     admin.from('profiles').select('id,company_id,role,active'),
     admin.from('operator_push_tokens').select('operator_id,updated_at')
   ]);
